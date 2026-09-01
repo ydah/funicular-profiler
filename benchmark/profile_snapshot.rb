@@ -26,11 +26,14 @@ probe = SnapshotSpan.new(
   ended_at_us: 10, status: :ok, error: nil, attributes: {}
 )
 started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+allocated_before = GC.stat(:total_allocated_objects)
 2_000.times { adapter.start(probe, nil) }
+stopped_allocated = GC.stat(:total_allocated_objects) - allocated_before
 stopped_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
 
 adapter.start_recording!
 started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+allocated_before = GC.stat(:total_allocated_objects)
 2_000.times do |index|
   item = SnapshotSpan.new(
     id: index, parent_id: nil, name: "work", started_at_us: index,
@@ -39,11 +42,32 @@ started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   )
   adapter.finish(adapter.start(item, nil), item)
 end
+recording_allocated = GC.stat(:total_allocated_objects) - allocated_before
 recording_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+
+started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+allocated_before = GC.stat(:total_allocated_objects)
+2_000.times do |index|
+  parent = SnapshotSpan.new(
+    id: "parent-#{index}", parent_id: nil, name: "funicular.component.update",
+    started_at_us: index, ended_at_us: index + 10, status: :ok, error: nil, attributes: {}
+  )
+  child = SnapshotSpan.new(
+    id: "child-#{index}", parent_id: parent.id, name: "funicular.vdom.diff",
+    started_at_us: index + 1, ended_at_us: index + 9, status: :ok, error: nil, attributes: {}
+  )
+  parent_state = adapter.start(parent, nil)
+  adapter.finish(adapter.start(child, parent_state), child)
+  adapter.finish(parent_state, parent)
+end
+nested_allocated = GC.stat(:total_allocated_objects) - allocated_before
+nested_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
 
 iterations = Integer(ENV.fetch("ITERATIONS", "1000"))
 started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+allocated_before = GC.stat(:total_allocated_objects)
 iterations.times { adapter.snapshot_json(0, 200) }
+snapshot_allocated = GC.stat(:total_allocated_objects) - allocated_before
 elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
 puts JSON.pretty_generate(
   "schema_version" => 1,
@@ -51,11 +75,17 @@ puts JSON.pretty_generate(
   "ruby" => { "engine" => RUBY_ENGINE, "version" => RUBY_VERSION, "platform" => RUBY_PLATFORM },
   "measurements" => {
     "stopped_seconds_per_span" => stopped_elapsed.fdiv(2_000),
+    "stopped_allocations_per_span" => stopped_allocated.fdiv(2_000),
     "recording_seconds_per_span" => recording_elapsed.fdiv(2_000),
-    "snapshot_seconds_per_call" => elapsed.fdiv(iterations)
+    "recording_allocations_per_span" => recording_allocated.fdiv(2_000),
+    "nested_seconds_per_operation" => nested_elapsed.fdiv(2_000),
+    "nested_allocations_per_operation" => nested_allocated.fdiv(2_000),
+    "snapshot_seconds_per_call" => elapsed.fdiv(iterations),
+    "snapshot_allocations_per_call" => snapshot_allocated.fdiv(iterations)
   },
   "context" => {
     "spans" => 2_000,
+    "nested_operations" => 2_000,
     "snapshots" => iterations,
     "snapshot_bytes" => adapter.snapshot_json(0, 200).bytesize
   }

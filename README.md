@@ -63,6 +63,7 @@ script/verify_integration_pin
 ```
 
 Benchmarks emit JSON so a local result can be kept as a machine-specific baseline and compared without making timing noise a CI failure:
+The snapshot benchmark reports time and allocated objects for stopped, recording, nested, and snapshot paths.
 
 ```sh
 bundle exec ruby benchmark/profile_buffer.rb > /tmp/profile-buffer-baseline.json

@@ -1,0 +1,7 @@
+{
+  "name": "funicular-profiler-tests",
+  "private": true,
+  "devDependencies": {
+    "jsdom": "29.1.1"
+  }
+}

@@ -1,0 +1,54 @@
+module Funicular
+  module Profiler
+    VERSION: String
+    SCHEMA_VERSION: Integer
+    TARGET_JSON_BYTES: Integer
+    MAX_JSON_BYTES: Integer
+
+    class AlreadyInstalledError < StandardError
+    end
+
+    class UnsupportedFunicularError < StandardError
+    end
+
+    def self.install!: (?capacity: Integer, ?max_in_flight: Integer, ?enabled: bool?) -> singleton(Funicular::Profiler)
+    def self.installed?: () -> bool
+    def self.start!: () -> singleton(Funicular::Profiler)
+    def self.stop!: () -> singleton(Funicular::Profiler)
+    def self.recording?: () -> bool
+    def self.clear!: () -> singleton(Funicular::Profiler)
+    def self.uninstall!: () -> singleton(Funicular::Profiler)
+    def self.snapshot: (?after_seq: Integer, ?limit: Integer) -> Hash[String, untyped]
+    def self.snapshot_json: (?Integer after_seq, ?Integer limit) -> String
+    def self.summary: () -> Hash[String, untyped]
+    def self.summary_json: () -> String
+
+    class Record
+      attr_reader seq: Integer?
+      attr_reader kind: String
+      attr_reader id: String
+      attr_reader parent_id: String?
+      attr_reader name: String
+      attr_reader started_at_us: Integer
+      attr_reader duration_us: Integer
+      attr_reader status: String
+      attr_reader attributes: Hash[String, untyped]
+
+      def to_h: () -> Hash[String, untyped]
+    end
+
+    class Buffer
+      attr_reader capacity: Integer
+      attr_reader size: Integer
+      attr_reader dropped_count: Integer
+      attr_reader session_id: Integer
+
+      def initialize: (?Integer capacity) -> void
+      def insert: (Record record) -> Record
+      def page: (Integer after_seq, Integer limit) -> Hash[Symbol, untyped]
+      def oldest_seq: () -> Integer?
+      def newest_seq: () -> Integer?
+      def clear!: () -> void
+    end
+  end
+end

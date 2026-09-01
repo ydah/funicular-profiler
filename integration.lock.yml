@@ -1,0 +1,6 @@
+schema_version: 1
+dependencies:
+  funicular:
+    repository: https://github.com/ydah/funicular.git
+    integration_branch: integration
+    revision: 8d013fcb501b3db038dc10b9077d47f667ccd1bf

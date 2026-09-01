@@ -1,0 +1,6 @@
+/.bundle/
+/.idea/
+/coverage/
+/pkg/
+/.ruby-lsp/
+/node_modules/

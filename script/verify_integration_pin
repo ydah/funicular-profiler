@@ -1,0 +1,25 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "yaml"
+
+root = File.expand_path("..", __dir__)
+lock = YAML.safe_load_file(File.join(root, "integration.lock.yml"))
+dependency = lock.fetch("dependencies").fetch("funicular")
+revision = dependency.fetch("revision")
+abort "Funicular revision must be a full 40-character SHA" unless revision.match?(/\A[0-9a-f]{40}\z/)
+
+bundler_lock = File.join(root, "Gemfile.lock")
+abort "Gemfile.lock is missing; run bundle lock" unless File.file?(bundler_lock)
+
+contents = File.read(bundler_lock)
+git_blocks = contents.split(/\n(?=GIT\n)/).select { |block| block.start_with?("GIT\n") }
+matching_block = git_blocks.find do |block|
+  block.include?("  remote: #{dependency.fetch("repository")}\n") &&
+    block.include?("  revision: #{revision}\n") &&
+    block.include?("  ref: #{revision}\n") &&
+    block.match?(/^    funicular \(/)
+end
+abort "Gemfile.lock does not match the exact Funicular repository and revision" unless matching_block
+
+puts "Funicular pin verified: #{revision}"

@@ -1,0 +1,53 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "open3"
+require "tmpdir"
+require "yaml"
+
+revision = ARGV.fetch(0) { abort "usage: script/update_integration_pin <40-character-sha>" }
+abort "revision must be a full 40-character SHA" unless revision.match?(/\A[0-9a-f]{40}\z/)
+
+root = File.expand_path("..", __dir__)
+lock_path = File.join(root, "integration.lock.yml")
+lock = YAML.safe_load_file(lock_path)
+dependency = lock.fetch("dependencies").fetch("funicular")
+repository = dependency.fetch("repository")
+old_revision = dependency.fetch("revision")
+
+def run!(*command, chdir: nil)
+  output, status = chdir ? Open3.capture2e(*command, chdir: chdir) : Open3.capture2e(*command)
+  abort output unless status.success?
+  output
+end
+
+schema = "unavailable"
+picoruby_revision = "unavailable"
+Dir.mktmpdir("funicular-pin-") do |checkout|
+  run!("git", "init", "--quiet", checkout)
+  run!("git", "fetch", "--quiet", "--depth=1", repository, revision, chdir: checkout)
+  instrumentation = run!("git", "show", "FETCH_HEAD:mrblib/instrumentation.rb", chdir: checkout)
+  schema = instrumentation[/SCHEMA_VERSION\s*=\s*(\d+)/, 1] || "unknown"
+  output, status = Open3.capture2e(
+    "git", "show", "FETCH_HEAD:lib/funicular/vendor/picoruby/REVISION", chdir: checkout
+  )
+  picoruby_revision = output.strip if status.success?
+end
+
+contents = File.read(lock_path).sub(old_revision, revision)
+abort "old revision was not found in integration.lock.yml" if contents == File.read(lock_path)
+File.write(lock_path, contents)
+
+puts "old Funicular SHA: #{old_revision}"
+puts "new Funicular SHA: #{revision}"
+puts "compare URL: #{repository.sub(/\.git\z/, "")}/compare/#{old_revision}...#{revision}"
+puts "instrumentation schema: #{schema}"
+puts "vendored PicoRuby revision: #{picoruby_revision}"
+puts "rollback SHA: #{old_revision}"
+
+run!("bundle", "lock", chdir: root)
+run!(File.join(root, "script/verify_integration_pin"), chdir: root)
+run!("bundle", "exec", "rake", "test", chdir: root)
+run!("bundle", "exec", "rake", "test:pico", chdir: root)
+run!("bundle", "exec", "ruby", "benchmark/profile_buffer.rb", chdir: root)
+run!("bundle", "exec", "ruby", "benchmark/profile_snapshot.rb", chdir: root)
